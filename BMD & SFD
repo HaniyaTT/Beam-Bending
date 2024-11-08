@@ -1,0 +1,162 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def calculate_second_moment_of_area(shape):
+    if shape == 1:  # Rectangular
+        h = float(input("Enter the height of the rectangular cross-section in meters: "))
+        b = float(input("Enter the width of the rectangular cross-section in meters: "))
+        I = (b * h**3) / 12
+        print(f"Calculated Second Moment of Area (I) for Rectangular Section: {I:.4f} m^4")
+    elif shape == 2:  # Circular
+        r = float(input("Enter the radius of the circular cross-section in meters: "))
+        I = (np.pi * r**4) / 4
+        print(f"Calculated Second Moment of Area (I) for Circular Section: {I:.4f} m^4")
+    else:  # Custom (I-shaped, T-shaped, etc.)
+        I = float(input("Enter the Second Moment of Area (I) directly in m^4: "))
+        print(f"Using provided Second Moment of Area (I): {I:.4f} m^4")
+    return I
+
+def beam_analysis(L, I, point_loads=None, udls=None, E=2e8, beam_type=1):
+    x = np.linspace(0, L, 1000)  # Position along the beam
+    dx = L / 1000  # Small step size for calculating the load distribution
+
+    # Initialize shear force and bending moment arrays
+    shear_force = np.zeros_like(x)
+    bending_moment = np.zeros_like(x)
+
+    # Simply supported beam
+    if beam_type == 1:
+        R1, R2 = 0, 0
+        if point_loads:
+            for P, a in point_loads:
+                R1 += P * (L - a) / L
+                R2 += P * a / L
+        if udls:
+            for w, start, end in udls:
+                load_length = end - start
+                load_total = w * load_length
+                R1 += load_total * (L - (start + end) / 2) / L
+                R2 += load_total * ((start + end) / 2) / L
+
+        for i, xi in enumerate(x):
+            # Shear force from reactions and loads
+            shear_force[i] += R1
+            for P, a in point_loads:
+                if xi >= a:
+                    shear_force[i] -= P
+            for w, start, end in udls:
+                if start <= xi <= end:
+                    shear_force[i] -= w * (xi - start)
+
+            # Bending moment from reactions and loads
+            bending_moment[i] += R1 * xi
+            for P, a in point_loads:
+                if xi >= a:
+                    bending_moment[i] -= P * (xi - a)
+            for w, start, end in udls:
+                if start <= xi <= end:
+                    load_length = xi - start
+                    bending_moment[i] -= w * load_length * (load_length / 2)
+
+    elif beam_type == 2:  # Cantilever beam
+        for i, xi in enumerate(x):
+            # Shear force from point loads
+            for P, a in point_loads:
+                if xi >= a:
+                    shear_force[i] -= P
+            # Shear force from UDLs
+            for w, start, end in udls:
+                if start <= xi <= end:
+                    load_length = xi - start
+                    shear_force[i] -= w * load_length
+
+            # Bending moment from point loads
+            for P, a in point_loads:
+                if xi >= a:
+                    bending_moment[i] -= P * (L - xi)
+            # Bending moment from UDLs
+            for w, start, end in udls:
+                if start <= xi <= end:
+                    load_length = xi - start
+                    bending_moment[i] -= w * load_length * (load_length / 2)
+
+    return shear_force, bending_moment
+
+def plot_results(x, shear_force, bending_moment):
+    plt.figure(figsize=(10, 6))
+
+    # Shear Force Diagram (SFD)
+    plt.subplot(2, 1, 1)
+    plt.plot(x, shear_force, label='Shear Force', color='b')
+    plt.fill_between(x, 0, shear_force, where=(shear_force > 0), color='lightblue', alpha=0.5)
+    plt.fill_between(x, 0, shear_force, where=(shear_force < 0), color='pink', alpha=0.5)
+    plt.title('Shear Force Diagram (SFD)')
+    plt.xlabel('Position along the beam (m)')
+    plt.ylabel('Shear Force (kN)')
+    plt.grid(True)
+
+    # Bending Moment Diagram (BMD)
+    plt.subplot(2, 1, 2)
+    plt.plot(x, bending_moment, label='Bending Moment', color='r')
+    plt.fill_between(x, 0, bending_moment, where=(bending_moment > 0), color='lightcoral', alpha=0.5)
+    plt.fill_between(x, 0, bending_moment, where=(bending_moment < 0), color='lightgreen', alpha=0.5)
+
+    # Locate and mark the maximum bending moment
+    max_bending_moment = np.max(np.abs(bending_moment))
+    max_bending_moment_index = np.argmax(np.abs(bending_moment))
+    max_bending_moment_position = x[max_bending_moment_index]
+    plt.plot(max_bending_moment_position, bending_moment[max_bending_moment_index], 'ko', label='Max Bending Moment')
+    plt.annotate(f'Max BM: {max_bending_moment:.2f} kNm',
+                 xy=(max_bending_moment_position, bending_moment[max_bending_moment_index]),
+                 xytext=(max_bending_moment_position + 0.1, bending_moment[max_bending_moment_index] + 5),
+                 arrowprops=dict(facecolor='black', shrink=0.05))
+
+    plt.title('Bending Moment Diagram (BMD)')
+    plt.xlabel('Position along the beam (m)')
+    plt.ylabel('Bending Moment (kNm)')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+# User Input
+print("Welcome to the Beam Analysis Program!")
+beam_type = int(input("Enter the type of beam (1 for Simply Supported, 2 for Cantilever): "))
+
+L = float(input("Enter the total length of the beam in meters: "))
+E = float(input("Enter the Young's Modulus of the material in MPa: ")) * 1e6  # Convert to Pascals
+
+# Cross-section shape and Second Moment of Area
+print("\nChoose the cross-section shape of the beam:")
+print("1: Rectangular\n2: Circular\n3: I-shaped, T-shaped, or Other Custom Shape")
+shape = int(input("Enter the number corresponding to the cross-section shape: "))
+I = calculate_second_moment_of_area(shape)
+
+# Initialize lists for point loads and UDLs
+point_loads = []
+udls = []
+
+# Collect point load data
+print("\nPoint Loads: Enter the details for any point loads.")
+num_point_loads = int(input("How many point loads are acting on the beam? "))
+for i in range(num_point_loads):
+    P = float(input(f"Enter the magnitude of point load {i+1} in kN: "))
+    a = float(input(f"Enter the location of point load {i+1} from the left support in meters: "))
+    point_loads.append((P, a))
+
+# Collect UDL data
+print("\nUniformly Distributed Loads (UDL): Enter the details for any UDLs.")
+num_udls = int(input("How many uniformly distributed loads are acting on the beam? "))
+for i in range(num_udls):
+    w = float(input(f"Enter the intensity of UDL {i+1} in kN/m: "))
+    start = float(input(f"Enter the starting position of UDL {i+1} from the left support in meters: "))
+    end = float(input(f"Enter the ending position of UDL {i+1} from the left support in meters: "))
+    udls.append((w, start, end))
+
+# Perform analysis
+x = np.linspace(0, L, 1000)
+shear_force, bending_moment = beam_analysis(L, I, point_loads=point_loads, udls=udls, E=E, beam_type=beam_type)
+
+# Plot results
+plot_results(x, shear_force, bending_moment)
